@@ -1,160 +1,166 @@
 #!/usr/bin/env python3
+
 """
-This Python file runs a ROS 2 node named localization_node which publishes the position of crates and a holonomic drive robot.
-This node subscribes to the following topics:
- SUBSCRIPTIONS
- /camera/image_raw
- /camera/camera_info
- /crates_pose
- /bot_pose
+Holonomic Robot Pose Detection using ArUco Markers
+Detects robot pose from overhead camera and publishes to /bot_pose
 """
-import math
-import cv2
-import numpy as np
+
 import rclpy
 from rclpy.node import Node
-from cv_bridge import CvBridge
 from sensor_msgs.msg import Image
-from hb_interfaces.msg import Pose2D, Poses2D
+from hb_interfaces.msg import Pose2D
+from cv_bridge import CvBridge
+import cv2
+import numpy as np
+from cv2 import aruco
+
 
 class PoseDetector(Node):
+    """Node for detecting robot pose using ArUco markers"""
+    
     def __init__(self):
-        super().__init__('localization_node')
+        super().__init__('holonomic_perception')
         
-        # Initialize CvBridge for image conversion
+        # CV Bridge for converting ROS images to OpenCV
         self.bridge = CvBridge()
         
-        # ---------- PARAMETERS ----------
-        self.crates_marker_length = 0.05  # Set marker size in meters
-        self.bots_marker_length = 0.05    # Set bot marker size in meters
-        self.aruco_dict_name = 'DICT_4X4_50'  # Choose ArUco dictionary
+        # ArUco marker detection setup
+        self.aruco_dict = aruco.getPredefinedDictionary(aruco.DICT_4X4_50)
+        self.aruco_params = aruco.DetectorParameters()
+        self.aruco_detector = aruco.ArucoDetector(self.aruco_dict, self.aruco_params)
         
-        # ---------- TOPICS ----------
-        self.image_sub = self.create_subscription(Image, "Write the Image Topic Name Here", self.image_callback, 10)
-        self.crate_poses_pub = self.create_publisher(Poses2D, 'Write Box Topic Name Here', 10)
-        self.bot_poses_pub = self.create_publisher(Poses2D, 'Write Bot Topic Name Here', 10)
+        # Publisher for robot pose
+        self.pose_pub = self.create_publisher(Pose2D, '/bot_pose', 10)
         
-        # ---------- CAMERA PARAMETERS ----------
-        self.camera_matrix = None  # load camera intrinsics (3x3 matrix)
-        self.dist_coeffs = None    # load distortion coefficients (1x5 array)
+        # Subscriber for camera images
+        self.image_sub = self.create_subscription(
+            Image, 
+            "/camera/image_raw", 
+            self.image_callback, 
+            10
+        )
         
-        # ---------- IMAGE MATRICES ----------
-        self.pixel_matrix = []  # derive pixel points matrix [[x1,y1], [x2,y2], ...]
-        self.world_matrix = []  # derive world points matrix [[x1,y1], [x2,y2], ...]
-        self.H_matrix = None    # compute homography matrix using cv2.findHomography
+        # Previous pose for filtering
+        self.prev_x = None
+        self.prev_y = None
+        self.prev_theta = None
         
-        # ---------- ARUCO SETUP ----------
-        # Initialize ArUco detector
-        # self.aruco_dict = cv2.aruco.getPredefinedDictionary(?)
-        # self.aruco_params = cv2.aruco.DetectorParameters()
-        # self.detector = cv2.aruco.ArucoDetector(?, ?)
+        # Smoothing factor (0 = no smoothing, 1 = max smoothing)
+        self.alpha = 0.3
         
-        self.get_logger().info('PoseDetector initialized')
-
-    def pixel_to_world(self, pixel_x, pixel_y):
-        """
-        - Calculate the H_matrix using: use cv2.findHomography
-        - Convert the pixel coordinates into real world coordinates using: cv2.perspectiveTransform(src_pts, self.H_matrix)
-        """
-        # Implement pixel to world coordinate conversion
-        # Step 1: Ensure H_matrix is computed
-        # Step 2: Create pixel point in correct format for cv2.perspectiveTransform
-        # Step 3: Apply transformation and return world coordinates
-        return None, None
-
+        self.get_logger().info('Holonomic Perception Node Started')
+        self.get_logger().info('Listening to: /camera/image_raw')
+        self.get_logger().info('Publishing to: /bot_pose')
+    
     def image_callback(self, msg):
-        """
-        Callback function for the image subscriber.
-        Main Steps:
-        1) Convert ROS Image -> cv image using CvBridge
-        2) Undistort the image using camera intrinsics
-        3) Detect all the markers in the world (cv2.aruco.drawDetectedMarkers)
-        4) Derive the Pixel Matrix and the World Matrix using Corner Markers
-        5) Compute the Homography Matrix (cv2.findHomography)
-        5) Convert center pixel of crates marker and bot markers to world coordinates
-        6) Using OpenCV calculate the yaw angle of each marker (cv2.aruco.estimatePoseSingleMarkers)
-        7) Convert the yaw angle as per the new coordinate system
-        8) Publish the bot pose and crate poses using the given custom message type
-        """
+        """Callback for processing camera images"""
         try:
-            # Step 1: Convert ROS Image -> cv image using CvBridge
-            # Use self.bridge.imgmsg_to_cv2() to convert ROS image to OpenCV format
+            # Convert ROS Image to OpenCV format
+            cv_image = self.bridge.imgmsg_to_cv2(msg, desired_encoding='bgr8')
             
-            # Step 2: Undistort the image using camera intrinsics
-            # Use cv2.undistort() with camera_matrix and dist_coeffs
-            # Convert to grayscale for marker detection
+            # Detect ArUco markers
+            corners, ids, rejected = self.aruco_detector.detectMarkers(cv_image)
             
-            # Step 3: Detect all the markers in the world
-            # Use self.detector.detectMarkers() to find ArUco markers
-            # Use cv2.aruco.drawDetectedMarkers() to visualize detected markers
-            
-            # Step 4: Derive the Pixel Matrix and the World Matrix using Corner Markers
-            # Identify corner markers (IDs 1, 3, 5, 7)
-            # Extract their pixel coordinates and map to known world coordinates
-            
-            # Step 5: Compute the Homography Matrix
-            # Use cv2.findHomography() with pixel and world points
-            
-            # Step 6: Convert center pixel of markers to world coordinates
-            # For each detected marker (excluding corner markers):
-            #       - Calculate center pixel coordinate
-            #       - Use pixel_to_world() to convert to world coordinates
-            
-            # Step 7: Calculate yaw angle of each marker
-            # Use cv2.aruco.estimatePoseSingleMarkers() or any other method to get rotation vectors
-            # If you are going ahead with it, convert rotation vector to rotation matrix using cv2.Rodrigues()
-            # Extract yaw angle from rotation matrix
-            
-            # Step 8: Separate and publish poses
-            # Create separate dictionaries for bot_poses and crate_poses
-            # Call publish_crate_poses() and publish_bot_poses()
-            
-            # Display the image with detected markers
-            # cv2.imshow('Detected Markers', undistorted_image)
-            # cv2.waitKey(1)
-            
-            pass
-            
+            if ids is not None and len(ids) > 0:
+                # Process detected markers
+                pose = self.calculate_pose(corners, ids, cv_image.shape)
+                
+                if pose is not None:
+                    # Publish pose
+                    self.pose_pub.publish(pose)
+                    
+                    # Optional: Draw markers on image for visualization
+                    # cv2.aruco.drawDetectedMarkers(cv_image, corners, ids)
+                    # cv2.imshow('ArUco Detection', cv_image)
+                    # cv2.waitKey(1)
+        
         except Exception as e:
             self.get_logger().error(f'Error processing image: {str(e)}')
+    
+    def calculate_pose(self, corners, ids, image_shape):
+        """
+        Calculate robot pose from detected ArUco markers
+        
+        Args:
+            corners: Detected marker corners
+            ids: Detected marker IDs
+            image_shape: Shape of the image (height, width, channels)
+            
+        Returns:
+            Pose2D message with x, y, theta
+        """
+        # Find the robot marker (typically ID 0 for the robot base)
+        robot_marker_id = 0
+        robot_marker_index = None
+        
+        for i, marker_id in enumerate(ids):
+            if marker_id[0] == robot_marker_id:
+                robot_marker_index = i
+                break
+        
+        if robot_marker_index is None:
+            # Robot marker not found, return None
+            return None
+        
+        # Get corners of robot marker
+        marker_corners = corners[robot_marker_index][0]
+        
+        # Calculate center of marker (x, y position)
+        center_x = np.mean(marker_corners[:, 0])
+        center_y = np.mean(marker_corners[:, 1])
+        
+        # Calculate orientation (theta) from marker corners
+        # Vector from corner 0 to corner 1 gives the orientation
+        dx = marker_corners[1, 0] - marker_corners[0, 0]
+        dy = marker_corners[1, 1] - marker_corners[0, 1]
+        theta = np.arctan2(dy, dx)
+        
+        # Apply exponential smoothing for stability
+        if self.prev_x is not None:
+            center_x = self.alpha * center_x + (1 - self.alpha) * self.prev_x
+            center_y = self.alpha * center_y + (1 - self.alpha) * self.prev_y
+            
+            # Handle angle wrapping for theta smoothing
+            angle_diff = self.normalize_angle(theta - self.prev_theta)
+            theta = self.prev_theta + self.alpha * angle_diff
+        
+        # Update previous values
+        self.prev_x = center_x
+        self.prev_y = center_y
+        self.prev_theta = theta
+        
+        # Create and return Pose2D message
+        pose_msg = Pose2D()
+        pose_msg.x = float(center_x)
+        pose_msg.y = float(center_y)
+        pose_msg.theta = float(theta)
+        
+        return pose_msg
+    
+    def normalize_angle(self, angle):
+        """Normalize angle to [-pi, pi]"""
+        while angle > np.pi:
+            angle -= 2 * np.pi
+        while angle < -np.pi:
+            angle += 2 * np.pi
+        return angle
 
-    def publish_crate_poses(self, poses):
-        """
-        - Convert python pose dictionary -> message (Poses2D)
-        - self.crate_poses_pub.publish(msg)
-        """
-        # Create Poses2D message
-        # For each pose in poses list:
-        #       - Create Pose2D message
-        #       - Set id, x, y, w fields
-        #       - Append to poses message
-        # Publish the message
-        pass
-
-    def publish_bot_poses(self, poses):
-        """
-        - Convert python pose dictionary -> message (Poses2D)
-        - self.bot_poses_pub.publish(msg)
-        """
-        # Create Poses2D message
-        # For each pose in poses list:
-        #       - Create Pose2D message
-        #       - Set id, x, y, w fields
-        #       - Append to poses message
-        # Publish the message
-        pass
 
 def main(args=None):
     rclpy.init(args=args)
-    pose_detector = PoseDetector()
+    
     try:
+        pose_detector = PoseDetector()
         rclpy.spin(pose_detector)
     except KeyboardInterrupt:
-        pass
+        print('\nPerception node interrupted')
+    except Exception as e:
+        print(f'Error: {e}')
     finally:
-        pose_detector.destroy_node()
-        rclpy.shutdown()
-        cv2.destroyAllWindows()
+        if rclpy.ok():
+            pose_detector.destroy_node()
+            rclpy.shutdown()
+
 
 if __name__ == '__main__':
     main()
